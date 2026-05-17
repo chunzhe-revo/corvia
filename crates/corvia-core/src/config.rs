@@ -253,6 +253,28 @@ impl Config {
     pub fn tantivy_dir(&self) -> PathBuf {
         self.index_dir().join("tantivy")
     }
+
+    /// Path to the user-scoped entries directory (`<data_dir>/user/docs`).
+    pub fn user_docs_dir(&self) -> PathBuf {
+        self.data_dir.join("user").join("docs")
+    }
+
+    /// Path to the user-scoped index directory (`<data_dir>/user/index`).
+    pub fn user_index_dir(&self) -> PathBuf {
+        self.data_dir.join("user").join("index")
+    }
+
+    /// Path to the user-scoped redb database file
+    /// (`<data_dir>/user/index/store.redb`).
+    pub fn user_redb_path(&self) -> PathBuf {
+        self.user_index_dir().join("store.redb")
+    }
+
+    /// Path to the user-scoped tantivy index directory
+    /// (`<data_dir>/user/index/tantivy`).
+    pub fn user_tantivy_dir(&self) -> PathBuf {
+        self.user_index_dir().join("tantivy")
+    }
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────

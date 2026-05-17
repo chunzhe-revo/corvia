@@ -226,7 +226,7 @@ pub fn write_with_handles(
 
     let entries_dir = match entry.meta.scope {
         Scope::Team => base_dir.join(config.entries_dir()),
-        Scope::User => base_dir.join("user").join("docs"),
+        Scope::User => base_dir.join(config.user_docs_dir()),
     };
 
     write_entry_atomic(&entries_dir, &entry)
@@ -349,7 +349,7 @@ pub fn write(
     let effective_scope = params.effective_scope();
     let entries_dir = match effective_scope {
         Scope::Team => base_dir.join(config.entries_dir()),
-        Scope::User => base_dir.join("user").join("docs"),
+        Scope::User => base_dir.join(config.user_docs_dir()),
     };
     let index_dir = base_dir.join(config.index_dir());
     std::fs::create_dir_all(&entries_dir)

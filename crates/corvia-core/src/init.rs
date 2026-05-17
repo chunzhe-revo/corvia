@@ -72,11 +72,11 @@ pub fn run_init(opts: &InitOptions) -> Result<InitResult> {
     ensure_mcp_json(&base_dir, &mut result)?;
     ensure_claude_settings(&base_dir, &mut result)?;
 
-    // Create user-scoped entry directories.
-    fs::create_dir_all(base_dir.join("user").join("docs"))
-        .context("failed to create user/docs/ directory")?;
-    fs::create_dir_all(base_dir.join("user").join("index"))
-        .context("failed to create user/index/ directory")?;
+    // Create user-scoped entry directories inside .corvia/.
+    fs::create_dir_all(corvia_dir.join("user").join("docs"))
+        .context("failed to create .corvia/user/docs/ directory")?;
+    fs::create_dir_all(corvia_dir.join("user").join("index"))
+        .context("failed to create .corvia/user/index/ directory")?;
 
     // Model download — best-effort, don't fail init if models can't download.
     ensure_models(&corvia_dir, &config, opts, &mut result);
@@ -433,13 +433,14 @@ mod tests {
     fn init_creates_user_docs_and_index_dirs() {
         let dir = TempDir::new().unwrap();
         run_init(&opts(dir.path())).unwrap();
+        let corvia = dir.path().join(".corvia");
         assert!(
-            dir.path().join("user").join("docs").is_dir(),
-            "user/docs/ should exist after init"
+            corvia.join("user").join("docs").is_dir(),
+            ".corvia/user/docs/ should exist after init"
         );
         assert!(
-            dir.path().join("user").join("index").is_dir(),
-            "user/index/ should exist after init"
+            corvia.join("user").join("index").is_dir(),
+            ".corvia/user/index/ should exist after init"
         );
     }
 

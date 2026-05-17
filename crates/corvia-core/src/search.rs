@@ -609,14 +609,14 @@ pub fn search(
         &team_entries,
     )?;
 
-    // User store: only queried if user/index/ exists. The presence of the directory
-    // is the signal that a user-scoped write has materialised the store; missing it
-    // is the steady state for fresh workspaces.
-    let user_index_dir = base_dir.join("user").join("index");
+    // User store: only queried if .corvia/user/index/ exists. The presence of the
+    // directory is the signal that a user-scoped write has materialised the store;
+    // missing it is the steady state for fresh workspaces.
+    let user_index_dir = base_dir.join(config.user_index_dir());
     let user_response = if user_index_dir.exists() {
-        let user_redb_path = user_index_dir.join("store.redb");
-        let user_tantivy_dir = user_index_dir.join("tantivy");
-        let user_entries = base_dir.join("user").join("docs");
+        let user_redb_path = base_dir.join(config.user_redb_path());
+        let user_tantivy_dir = base_dir.join(config.user_tantivy_dir());
+        let user_entries = base_dir.join(config.user_docs_dir());
         // If the user index files have not been initialized (directory exists but
         // empty), `open` will create them; treat any open failure as "no user
         // results" rather than failing the entire search.
@@ -962,14 +962,13 @@ mod tests {
         };
         write(&config, tmp.path(), &embedder, team_params).unwrap();
 
-        // User write: route into user/docs/ + user/index/ explicitly so the dual-
-        // index search path is exercised. `write()` currently always indexes into
-        // the team store regardless of scope; opening user-side handles and using
-        // `write_with_handles` populates the user store at user/index/.
-        let user_index_dir = tmp.path().join("user").join("index");
-        let user_redb = RedbIndex::open(&user_index_dir.join("store.redb"))
+        // User write: route into .corvia/user/docs/ + .corvia/user/index/ explicitly
+        // so the dual-index search path is exercised. `write()` currently always
+        // indexes into the team store regardless of scope; opening user-side handles
+        // and using `write_with_handles` populates the user store.
+        let user_redb = RedbIndex::open(&tmp.path().join(config.user_redb_path()))
             .expect("opening user redb");
-        let user_tantivy = TantivyIndex::open(&user_index_dir.join("tantivy"))
+        let user_tantivy = TantivyIndex::open(&tmp.path().join(config.user_tantivy_dir()))
             .expect("opening user tantivy");
         let user_params = WriteParams {
             content: "personal preference: always use dry run first".into(),
