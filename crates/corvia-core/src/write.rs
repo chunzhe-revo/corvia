@@ -24,7 +24,7 @@ use crate::embed::Embedder;
 use crate::entry::{new_entry, write_entry_atomic};
 use crate::index::RedbIndex;
 use crate::tantivy_index::TantivyIndex;
-use crate::types::{Kind, WriteResponse};
+use crate::types::{Kind, Scope, WriteResponse};
 
 // ---------------------------------------------------------------------------
 // WriteParams
@@ -42,6 +42,15 @@ pub struct WriteParams {
     /// If empty and content is non-empty, auto-dedup will attempt to find
     /// a near-duplicate to supersede.
     pub supersedes: Vec<String>,
+    /// Visibility scope of the entry. Defaults to `Scope::Team` when `None`.
+    pub scope: Option<Scope>,
+}
+
+impl WriteParams {
+    /// Returns the effective scope, defaulting to `Scope::Team` when `None`.
+    pub fn effective_scope(&self) -> Scope {
+        self.scope.clone().unwrap_or_default()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -158,9 +167,9 @@ pub fn write_with_handles(
     redb: &RedbIndex,
     tantivy: &TantivyIndex,
 ) -> Result<WriteResponse> {
-    let entries_dir = base_dir.join(config.entries_dir());
-
     // Step 3: Determine supersedes list and action.
+    // Extract scope before partially moving params fields.
+    let entry_scope = params.effective_scope();
     let caller_provided_supersedes = !params.supersedes.is_empty();
     let mut supersedes = params.supersedes;
     let action: String;
@@ -206,13 +215,19 @@ pub fn write_with_handles(
     }
 
     // Step 5: Create entry and write atomically.
-    let entry = new_entry(
+    let mut entry = new_entry(
         params.content,
         params.kind,
         params.tags,
         supersedes.clone(),
     );
+    entry.meta.scope = entry_scope;
     let entry_id = entry.meta.id.clone();
+
+    let entries_dir = match entry.meta.scope {
+        Scope::Team => base_dir.join(config.entries_dir()),
+        Scope::User => base_dir.join("user").join("docs"),
+    };
 
     write_entry_atomic(&entries_dir, &entry)
         .with_context(|| format!("writing entry {}", entry_id))?;
@@ -331,7 +346,11 @@ pub fn write(
     params: WriteParams,
 ) -> Result<WriteResponse> {
     // Step 1: Resolve paths and ensure directories exist.
-    let entries_dir = base_dir.join(config.entries_dir());
+    let effective_scope = params.effective_scope();
+    let entries_dir = match effective_scope {
+        Scope::Team => base_dir.join(config.entries_dir()),
+        Scope::User => base_dir.join("user").join("docs"),
+    };
     let index_dir = base_dir.join(config.index_dir());
     std::fs::create_dir_all(&entries_dir)
         .with_context(|| format!("creating entries dir: {}", entries_dir.display()))?;
@@ -427,8 +446,21 @@ mod tests {
             kind: Kind::default(),
             tags: vec![],
             supersedes: vec![],
+            scope: None,
         };
         assert_eq!(params.kind, Kind::Learning);
+    }
+
+    #[test]
+    fn write_params_scope_defaults_to_team() {
+        let p = WriteParams {
+            content: "test".into(),
+            kind: crate::types::Kind::Learning,
+            tags: vec![],
+            supersedes: vec![],
+            scope: None,
+        };
+        assert_eq!(p.effective_scope(), crate::types::Scope::Team);
     }
 
     #[test]
@@ -483,6 +515,7 @@ mod tests {
             kind: Kind::Learning,
             tags: vec!["rust".to_string(), "programming".to_string()],
             supersedes: vec![],
+            scope: None,
         };
 
         let response = write(&config, base_dir, &embedder, params).unwrap();
@@ -533,6 +566,7 @@ mod tests {
                 kind: Kind::Learning,
                 tags: vec![],
                 supersedes: vec![],
+                scope: None,
             },
         )
         .unwrap();
@@ -547,6 +581,7 @@ mod tests {
                 kind: Kind::Learning,
                 tags: vec![],
                 supersedes: vec![first.id.clone()],
+                scope: None,
             },
         )
         .unwrap();
@@ -599,6 +634,7 @@ mod tests {
                 kind: Kind::Learning,
                 tags: vec![],
                 supersedes: vec![],
+                scope: None,
             },
         )
         .unwrap();
@@ -615,6 +651,7 @@ mod tests {
                 kind: Kind::Learning,
                 tags: vec![],
                 supersedes: vec![],
+                scope: None,
             },
         )
         .unwrap();

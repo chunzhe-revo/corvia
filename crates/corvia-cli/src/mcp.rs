@@ -278,6 +278,7 @@ fn handle_write(
         kind,
         tags: params.tags,
         supersedes: params.supersedes,
+        scope: None,
     };
 
     let response = write::write(config, base_dir, embedder, write_params)
@@ -663,6 +664,7 @@ async fn handle_tools_call_http(
                     kind,
                     tags: p.tags,
                     supersedes: p.supersedes,
+                    scope: None,
                 };
                 // Acquire write lock (async) before the blocking work.
                 let _lock = state.handles.write_lock.lock().await;

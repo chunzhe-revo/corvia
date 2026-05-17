@@ -80,6 +80,7 @@ fn write_then_search_finds_entry() {
             kind: Kind::Reference,
             tags: vec!["tantivy".to_string()],
             supersedes: vec![],
+    scope: None,
         },
     )
     .unwrap();
@@ -124,6 +125,7 @@ fn auto_dedup_supersedes_similar_entry() {
             kind: Kind::Decision,
             tags: vec![],
             supersedes: vec![],
+    scope: None,
         },
     )
     .unwrap();
@@ -138,6 +140,7 @@ fn auto_dedup_supersedes_similar_entry() {
             kind: Kind::Decision,
             tags: vec![],
             supersedes: vec![],
+    scope: None,
         },
     )
     .unwrap();
@@ -175,6 +178,7 @@ fn superseded_entry_excluded_from_search() {
             kind: Kind::Decision,
             tags: vec![],
             supersedes: vec![],
+    scope: None,
         },
     )
     .unwrap();
@@ -188,6 +192,7 @@ fn superseded_entry_excluded_from_search() {
             kind: Kind::Decision,
             tags: vec![],
             supersedes: vec![first.id.clone()],
+    scope: None,
         },
     )
     .unwrap();
@@ -230,6 +235,7 @@ fn supersession_chain() {
             kind: Kind::Decision,
             tags: vec![],
             supersedes: vec![],
+    scope: None,
         },
     )
     .unwrap();
@@ -243,6 +249,7 @@ fn supersession_chain() {
             kind: Kind::Decision,
             tags: vec![],
             supersedes: vec![a.id.clone()],
+    scope: None,
         },
     )
     .unwrap();
@@ -256,6 +263,7 @@ fn supersession_chain() {
             kind: Kind::Decision,
             tags: vec![],
             supersedes: vec![b.id.clone()],
+    scope: None,
         },
     )
     .unwrap();
@@ -434,6 +442,7 @@ fn write_with_missing_supersedes_warns() {
             kind: Kind::Learning,
             tags: vec![],
             supersedes: vec!["nonexistent-id".to_string()],
+    scope: None,
         },
     )
     .unwrap();
@@ -473,6 +482,7 @@ fn kind_filter_in_search() {
             kind: Kind::Decision,
             tags: vec![],
             supersedes: vec![],
+    scope: None,
         },
     )
     .unwrap();
@@ -487,6 +497,7 @@ fn kind_filter_in_search() {
             kind: Kind::Instruction,
             tags: vec![],
             supersedes: vec![],
+    scope: None,
         },
     )
     .unwrap();
@@ -641,6 +652,7 @@ fn empty_content_write() {
             kind: Kind::Learning,
             tags: vec![],
             supersedes: vec![],
+    scope: None,
         },
     )
     .unwrap();
@@ -685,6 +697,7 @@ fn write_returns_similarity_on_dedup() {
             kind: Kind::Learning,
             tags: vec![],
             supersedes: vec![],
+    scope: None,
         },
     )
     .unwrap();
@@ -698,6 +711,7 @@ fn write_returns_similarity_on_dedup() {
             kind: Kind::Learning,
             tags: vec![],
             supersedes: vec![],
+    scope: None,
         },
     )
     .unwrap();
@@ -1034,6 +1048,7 @@ fn full_pipeline_ordering() {
             kind: Kind::Learning,
             tags: vec![],
             supersedes: vec![],
+    scope: None,
         },
     )
     .unwrap();
@@ -1048,6 +1063,7 @@ fn full_pipeline_ordering() {
             kind: Kind::Learning,
             tags: vec![],
             supersedes: vec![],
+    scope: None,
         },
     )
     .unwrap();

@@ -312,6 +312,7 @@ fn cmd_write(
         kind,
         tags,
         supersedes,
+        scope: None,
     };
 
     let response = corvia_core::write::write(&config, &base_dir, &embedder, params)?;
