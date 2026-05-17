@@ -182,6 +182,38 @@ if [[ ${INGEST_COUNT} -eq 0 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Step 8b: Disable Claude auto-memory (Phase 2 — only when user store is ready)
+# ---------------------------------------------------------------------------
+USER_DOCS="${WORKSPACE}/.corvia/user/docs"
+if [[ -d "${USER_DOCS}" ]] && [[ -f "${SETTINGS_JSON}" ]]; then
+  echo "==> Disabling Claude auto-memory (user store is ready) …"
+  python3 - "${SETTINGS_JSON}" <<'PYEOF'
+import json
+import sys
+
+settings_path = sys.argv[1]
+
+with open(settings_path, "r") as f:
+    settings = json.load(f)
+
+removed = []
+for key in ("autoMemory", "auto_memory"):
+    if key in settings:
+        del settings[key]
+        removed.append(key)
+
+with open(settings_path, "w") as f:
+    json.dump(settings, f, indent=2)
+    f.write("\n")
+
+if removed:
+    print(f"  Removed auto-memory keys: {', '.join(removed)}")
+else:
+    print("  No auto-memory keys found in settings.json (already clean).")
+PYEOF
+fi
+
+# ---------------------------------------------------------------------------
 # Step 9: Print summary
 # ---------------------------------------------------------------------------
 echo ""
