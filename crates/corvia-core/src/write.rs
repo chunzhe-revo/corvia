@@ -345,21 +345,32 @@ pub fn write(
     embedder: &Embedder,
     params: WriteParams,
 ) -> Result<WriteResponse> {
-    // Step 1: Resolve paths and ensure directories exist.
+    // Step 1: Resolve paths and ensure directories exist. User-scoped writes go
+    // to .corvia/user/docs/ and index into .corvia/user/index/; team writes use
+    // the default entries/ + index/ paths.
     let effective_scope = params.effective_scope();
-    let entries_dir = match effective_scope {
-        Scope::Team => base_dir.join(config.entries_dir()),
-        Scope::User => base_dir.join(config.user_docs_dir()),
+    let (entries_dir, index_dir, redb_path, tantivy_dir) = match effective_scope {
+        Scope::Team => (
+            base_dir.join(config.entries_dir()),
+            base_dir.join(config.index_dir()),
+            base_dir.join(config.redb_path()),
+            base_dir.join(config.tantivy_dir()),
+        ),
+        Scope::User => (
+            base_dir.join(config.user_docs_dir()),
+            base_dir.join(config.user_index_dir()),
+            base_dir.join(config.user_redb_path()),
+            base_dir.join(config.user_tantivy_dir()),
+        ),
     };
-    let index_dir = base_dir.join(config.index_dir());
     std::fs::create_dir_all(&entries_dir)
         .with_context(|| format!("creating entries dir: {}", entries_dir.display()))?;
     std::fs::create_dir_all(&index_dir)
         .with_context(|| format!("creating index dir: {}", index_dir.display()))?;
 
     // Step 2: Open indexes.
-    let redb = RedbIndex::open(&base_dir.join(config.redb_path())).context("opening redb index")?;
-    let tantivy = TantivyIndex::open(&base_dir.join(config.tantivy_dir())).context("opening tantivy index")?;
+    let redb = RedbIndex::open(&redb_path).context("opening redb index")?;
+    let tantivy = TantivyIndex::open(&tantivy_dir).context("opening tantivy index")?;
     write_with_handles(config, base_dir, embedder, params, &redb, &tantivy)
 }
 

@@ -71,6 +71,9 @@ enum Command {
         /// IDs of entries to explicitly supersede (comma-separated)
         #[arg(short, long)]
         supersedes: Option<String>,
+        /// Entry scope: team (default) or user
+        #[arg(long, default_value = "team")]
+        scope: String,
     },
     /// Show system status
     Status,
@@ -168,7 +171,8 @@ async fn main() {
             kind,
             tags,
             supersedes,
-        } => cmd_write(cli.base_dir.as_deref(), &content, &kind, tags.as_deref(), supersedes.as_deref()),
+            scope,
+        } => cmd_write(cli.base_dir.as_deref(), &content, &kind, tags.as_deref(), supersedes.as_deref(), &scope),
         Command::Status => cmd_status(cli.base_dir.as_deref()),
         Command::Traces { limit, filter } => cmd_traces(cli.base_dir.as_deref(), limit, filter.as_deref()),
         Command::Mcp { test } => {
@@ -287,6 +291,7 @@ fn cmd_write(
     kind: &str,
     tags: Option<&str>,
     supersedes: Option<&str>,
+    scope: &str,
 ) -> anyhow::Result<()> {
     let (base_dir, config) = load_config(base_dir_arg)?;
 
@@ -307,12 +312,18 @@ fn cmd_write(
         None => vec![],
     };
 
+    let scope_parsed = match scope {
+        "user" => Some(corvia_core::types::Scope::User),
+        "team" | "" => Some(corvia_core::types::Scope::Team),
+        other => anyhow::bail!("invalid --scope value: {other:?} (expected: team | user)"),
+    };
+
     let params = WriteParams {
         content: content.to_string(),
         kind,
         tags,
         supersedes,
-        scope: None,
+        scope: scope_parsed,
     };
 
     let response = corvia_core::write::write(&config, &base_dir, &embedder, params)?;
