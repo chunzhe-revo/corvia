@@ -235,6 +235,24 @@ pub fn search_with_handles(
     redb: &RedbIndex,
     tantivy: &TantivyIndex,
 ) -> Result<SearchResponse> {
+    let entries_dir = base_dir.join(config.entries_dir());
+    search_with_handles_at(config, base_dir, embedder, params, redb, tantivy, &entries_dir)
+}
+
+/// Internal: run the hybrid search pipeline against a specific entries directory.
+///
+/// Behaves identically to [`search_with_handles`] but lets callers route drift detection
+/// at an arbitrary entries directory (e.g. `user/docs/`) so the same pipeline can serve
+/// both the team store and the user-scoped store.
+fn search_with_handles_at(
+    config: &Config,
+    base_dir: &Path,
+    embedder: &Embedder,
+    params: &SearchParams,
+    redb: &RedbIndex,
+    tantivy: &TantivyIndex,
+    entries_dir: &Path,
+) -> Result<SearchResponse> {
     // Record raw query for eval mining (bounded to prevent pathological inputs from
     // pushing the trace file past rotation threshold). Design RFC §4.2: no redaction
     // toggle — corvia is single-user local; raw query is the eval join key.
@@ -263,8 +281,8 @@ pub fn search_with_handles(
     }
 
     // Step 3: Drift detection.
-    let entries_dir = base_dir.join(config.entries_dir());
-    let actual_files = scan_entries(&entries_dir).context("scanning entries for drift detection")?;
+    let _ = base_dir; // base_dir kept in signature for symmetry with search_with_handles
+    let actual_files = scan_entries(entries_dir).context("scanning entries for drift detection")?;
     let actual_count = actual_files.len() as u64;
     let stale = actual_count != indexed_count;
 
@@ -561,18 +579,110 @@ pub fn search_with_handles(
 
 /// Run the hybrid search pipeline, opening index handles internally.
 ///
-/// For callers that hold persistent handles, use [`search_with_handles`] directly.
+/// Queries the team store (always) plus the user-scoped store at `user/index/` +
+/// `user/docs/` when it exists, merges the two result sets by descending score, and
+/// truncates to `params.limit`. The user store is silently skipped when its index
+/// directory is absent (e.g. the workspace has not yet received any `scope=user`
+/// writes).
+///
+/// For callers that hold persistent handles, use [`search_with_handles`] directly —
+/// that path is single-store and intended for the team index.
 pub fn search(
     config: &Config,
     base_dir: &Path,
     embedder: &Embedder,
     params: &SearchParams,
 ) -> Result<SearchResponse> {
-    let redb = RedbIndex::open(&base_dir.join(config.redb_path()))
+    // Team store: always queried.
+    let team_redb = RedbIndex::open(&base_dir.join(config.redb_path()))
         .context("opening redb index for search")?;
-    let tantivy = TantivyIndex::open(&base_dir.join(config.tantivy_dir()))
+    let team_tantivy = TantivyIndex::open(&base_dir.join(config.tantivy_dir()))
         .context("opening tantivy index for search")?;
-    search_with_handles(config, base_dir, embedder, params, &redb, &tantivy)
+    let team_entries = base_dir.join(config.entries_dir());
+    let team_response = search_with_handles_at(
+        config,
+        base_dir,
+        embedder,
+        params,
+        &team_redb,
+        &team_tantivy,
+        &team_entries,
+    )?;
+
+    // User store: only queried if user/index/ exists. The presence of the directory
+    // is the signal that a user-scoped write has materialised the store; missing it
+    // is the steady state for fresh workspaces.
+    let user_index_dir = base_dir.join("user").join("index");
+    let user_response = if user_index_dir.exists() {
+        let user_redb_path = user_index_dir.join("store.redb");
+        let user_tantivy_dir = user_index_dir.join("tantivy");
+        let user_entries = base_dir.join("user").join("docs");
+        // If the user index files have not been initialized (directory exists but
+        // empty), `open` will create them; treat any open failure as "no user
+        // results" rather than failing the entire search.
+        match (
+            RedbIndex::open(&user_redb_path),
+            TantivyIndex::open(&user_tantivy_dir),
+        ) {
+            (Ok(user_redb), Ok(user_tantivy)) => Some(search_with_handles_at(
+                config,
+                base_dir,
+                embedder,
+                params,
+                &user_redb,
+                &user_tantivy,
+                &user_entries,
+            )?),
+            (Err(e), _) | (_, Err(e)) => {
+                warn!(error = %e, "user-scope index open failed; skipping user store");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Merge: concatenate, sort by descending score, truncate to limit. When the user
+    // store is absent we return the team response verbatim so the quality signal is
+    // preserved.
+    let Some(user_response) = user_response else {
+        return Ok(team_response);
+    };
+
+    let mut merged: Vec<SearchResult> = team_response.results;
+    merged.extend(user_response.results);
+    merged.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    merged.truncate(params.limit);
+
+    // Quality signal: take the better of the two confidences (with team's suggestion
+    // as the tie-break) so an empty team result + populated user result still
+    // surfaces a meaningful confidence.
+    let quality = if confidence_rank(team_response.quality.confidence)
+        >= confidence_rank(user_response.quality.confidence)
+    {
+        team_response.quality
+    } else {
+        user_response.quality
+    };
+
+    Ok(SearchResponse {
+        results: merged,
+        quality,
+    })
+}
+
+/// Numeric ranking of confidence levels for merge tie-breaks (higher = better).
+fn confidence_rank(c: Confidence) -> u8 {
+    match c {
+        Confidence::High => 3,
+        Confidence::Medium => 2,
+        Confidence::Low => 1,
+        Confidence::None => 0,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -820,5 +930,88 @@ mod tests {
         for (got, want) in parsed_scores.iter().zip(&[0.1f32, 0.2, 0.3]) {
             assert!((got - want).abs() < 1e-6, "score mismatch: {got} vs {want}");
         }
+    }
+
+    #[test]
+    #[ignore] // integration: requires embedder + indexes (writes entries and searches)
+    fn search_returns_results_from_both_scopes() {
+        use crate::init::{run_init, InitOptions};
+        use crate::types::{Kind, Scope};
+        use crate::write::{write, write_with_handles, WriteParams};
+
+        let tmp = tempfile::tempdir().unwrap();
+        let opts = InitOptions {
+            yes: true,
+            base_dir: Some(tmp.path().to_path_buf()),
+            force: false,
+            model_path: None,
+        };
+        run_init(&opts).unwrap();
+
+        let config = Config::default();
+        let embedder = Embedder::new(None, "nomic-embed-text-v1.5", "jina-v1-turbo")
+            .expect("failed to init embedder");
+
+        // Team write: routed by `write()` to entries/ + index/.
+        let team_params = WriteParams {
+            content: "team knowledge about kubernetes deployment".into(),
+            kind: Kind::Decision,
+            tags: vec![],
+            supersedes: vec![],
+            scope: None, // defaults to Team
+        };
+        write(&config, tmp.path(), &embedder, team_params).unwrap();
+
+        // User write: route into user/docs/ + user/index/ explicitly so the dual-
+        // index search path is exercised. `write()` currently always indexes into
+        // the team store regardless of scope; opening user-side handles and using
+        // `write_with_handles` populates the user store at user/index/.
+        let user_index_dir = tmp.path().join("user").join("index");
+        let user_redb = RedbIndex::open(&user_index_dir.join("store.redb"))
+            .expect("opening user redb");
+        let user_tantivy = TantivyIndex::open(&user_index_dir.join("tantivy"))
+            .expect("opening user tantivy");
+        let user_params = WriteParams {
+            content: "personal preference: always use dry run first".into(),
+            kind: Kind::Learning,
+            tags: vec![],
+            supersedes: vec![],
+            scope: Some(Scope::User),
+        };
+        write_with_handles(
+            &config,
+            tmp.path(),
+            &embedder,
+            user_params,
+            &user_redb,
+            &user_tantivy,
+        )
+        .unwrap();
+
+        // Drop user-side handles so `search()` can re-open them — redb takes an
+        // exclusive file lock and the test holds the only writer.
+        drop(user_redb);
+        drop(user_tantivy);
+
+        let params = SearchParams {
+            query: "deployment dry run".to_string(),
+            limit: 10,
+            max_tokens: None,
+            min_score: None,
+            kind: None,
+        };
+        let response = search(&config, tmp.path(), &embedder, &params).unwrap();
+
+        let bodies: Vec<&str> = response.results.iter().map(|r| r.content.as_str()).collect();
+        assert!(
+            bodies.iter().any(|b| b.contains("team knowledge")),
+            "team entry must appear in merged results; got {:?}",
+            bodies
+        );
+        assert!(
+            bodies.iter().any(|b| b.contains("personal preference")),
+            "user entry must appear in merged results; got {:?}",
+            bodies
+        );
     }
 }
