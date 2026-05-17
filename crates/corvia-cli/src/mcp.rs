@@ -32,7 +32,7 @@ use corvia_core::embed::Embedder;
 use corvia_core::index::RedbIndex;
 use corvia_core::search::{self, SearchParams};
 use corvia_core::tantivy_index::TantivyIndex;
-use corvia_core::types::Kind;
+use corvia_core::types::{Kind, Scope};
 use corvia_core::write::{self, WriteParams};
 
 // ---------------------------------------------------------------------------
@@ -62,6 +62,7 @@ struct WriteToolParams {
     tags: Vec<String>,
     #[serde(default)]
     supersedes: Vec<String>,
+    scope: Option<String>,
 }
 
 fn default_kind() -> String {
@@ -193,6 +194,12 @@ fn write_tool() -> Tool {
                     "type": "array",
                     "items": { "type": "string" },
                     "description": "IDs of entries to explicitly supersede"
+                },
+                "scope": {
+                    "type": "string",
+                    "description": "Visibility scope: 'user' for user-private entries, 'team' (default) for shared team knowledge.",
+                    "enum": ["team", "user"],
+                    "default": "team"
                 }
             },
             "required": ["content"]
@@ -273,12 +280,17 @@ fn handle_write(
         .parse::<Kind>()
         .map_err(|e| anyhow::anyhow!(e))?;
 
+    let scope = params.scope.as_deref().map(|s| match s {
+        "user" => Scope::User,
+        _ => Scope::Team,
+    });
+
     let write_params = WriteParams {
         content: params.content,
         kind,
         tags: params.tags,
         supersedes: params.supersedes,
-        scope: None,
+        scope,
     };
 
     let response = write::write(config, base_dir, embedder, write_params)
@@ -659,12 +671,16 @@ async fn handle_tools_call_http(
                 let p: WriteToolParams = serde_json::from_value(args)
                     .map_err(|e| anyhow::anyhow!("invalid write params: {e}"))?;
                 let kind = p.kind.parse::<Kind>().map_err(|e| anyhow::anyhow!(e))?;
+                let scope = p.scope.as_deref().map(|s| match s {
+                    "user" => Scope::User,
+                    _ => Scope::Team,
+                });
                 let write_params = corvia_core::write::WriteParams {
                     content: p.content,
                     kind,
                     tags: p.tags,
                     supersedes: p.supersedes,
-                    scope: None,
+                    scope,
                 };
                 // Acquire write lock (async) before the blocking work.
                 let _lock = state.handles.write_lock.lock().await;
