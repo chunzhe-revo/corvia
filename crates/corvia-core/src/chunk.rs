@@ -392,6 +392,7 @@ This is the body."#;
                 kind: Kind::Decision,
                 supersedes: vec![],
                 tags: vec!["architecture".to_string(), "v2".to_string()],
+                scope: Default::default(),
             },
             body: "Some body text here.".to_string(),
         };
@@ -416,6 +417,7 @@ This is the body."#;
                 kind: Kind::Learning,
                 supersedes: vec![],
                 tags: vec![],
+                scope: Default::default(),
             },
             body: String::new(),
         };

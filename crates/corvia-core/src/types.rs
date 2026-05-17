@@ -9,6 +9,19 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
+// Scope
+// ---------------------------------------------------------------------------
+
+/// Visibility scope of a knowledge entry.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Scope {
+    #[default]
+    Team,
+    User,
+}
+
+// ---------------------------------------------------------------------------
 // Kind
 // ---------------------------------------------------------------------------
 
@@ -69,6 +82,8 @@ pub struct EntryMeta {
     pub supersedes: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub scope: Scope,
 }
 
 /// A complete knowledge entry: metadata plus body text.
@@ -241,6 +256,7 @@ mod tests {
             kind: Kind::Decision,
             supersedes: vec!["old-id-1".to_string()],
             tags: vec!["architecture".to_string(), "v2".to_string()],
+            scope: Default::default(),
         };
 
         let json = serde_json::to_string(&meta).unwrap();
@@ -261,6 +277,7 @@ mod tests {
             kind: Kind::default(),
             supersedes: vec![],
             tags: vec![],
+            scope: Default::default(),
         };
         let json_empty = serde_json::to_string(&meta_empty).unwrap();
         assert!(

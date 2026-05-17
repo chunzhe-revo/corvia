@@ -297,6 +297,7 @@ mod tests {
                 kind: Kind::Learning,
                 supersedes: supersedes.into_iter().map(String::from).collect(),
                 tags: vec![],
+                scope: Default::default(),
             },
             body: String::new(),
         }

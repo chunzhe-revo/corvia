@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{bail, Context, Result};
 
-use crate::types::{Entry, EntryMeta, Kind, new_entry_id};
+use crate::types::{Entry, EntryMeta, Kind, Scope, new_entry_id};
 
 // ---------------------------------------------------------------------------
 // Time helpers
@@ -66,6 +66,7 @@ pub fn new_entry(
             kind,
             supersedes,
             tags,
+            scope: Scope::default(),
         },
         body,
     }
@@ -221,7 +222,7 @@ pub fn scan_entries(entries_dir: &Path) -> Result<Vec<PathBuf>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::Kind;
+    use crate::types::{Kind, Scope};
 
     /// Helper: build an entry with all fields populated.
     fn sample_entry() -> Entry {
@@ -232,6 +233,7 @@ mod tests {
                 kind: Kind::Decision,
                 supersedes: vec!["old-entry-1".to_string(), "old-entry-2".to_string()],
                 tags: vec!["architecture".to_string(), "v2".to_string()],
+                scope: Default::default(),
             },
             body: "This is the body of the entry.\n\nIt has multiple paragraphs.".to_string(),
         }
@@ -357,6 +359,7 @@ mod tests {
                     "has [brackets]".to_string(),
                     "normal-tag".to_string(),
                 ],
+                scope: Default::default(),
             },
             body: "body".to_string(),
         };
@@ -396,5 +399,22 @@ mod tests {
         assert_eq!(entry.meta.tags, vec!["tag1"]);
         assert!(entry.meta.supersedes.is_empty());
         assert_eq!(entry.body, "test body");
+    }
+
+    #[test]
+    fn scope_defaults_to_team_on_roundtrip() {
+        let entry = new_entry("body".into(), Kind::Learning, vec![], vec![]);
+        let serialized = serialize_entry(&entry).unwrap();
+        let parsed = parse_entry(&serialized).unwrap();
+        assert_eq!(parsed.meta.scope, Scope::Team);
+    }
+
+    #[test]
+    fn scope_user_survives_roundtrip() {
+        let mut entry = new_entry("body".into(), Kind::Learning, vec![], vec![]);
+        entry.meta.scope = Scope::User;
+        let serialized = serialize_entry(&entry).unwrap();
+        let parsed = parse_entry(&serialized).unwrap();
+        assert_eq!(parsed.meta.scope, Scope::User);
     }
 }
