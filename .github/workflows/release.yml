@@ -12,7 +12,21 @@ env:
   CARGO_INCREMENTAL: 0
 
 jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create.outputs.upload_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create GitHub release
+        id: create
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+
   build:
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
@@ -70,7 +84,7 @@ jobs:
             ${{ runner.os }}-cargo-registry-
 
       - name: Build release binaries
-        run: cargo build --release -p corvia --target ${{ matrix.target }}
+        run: cargo build --release --locked -p corvia --target ${{ matrix.target }}
 
       - name: Prepare release assets (Linux)
         if: runner.os == 'Linux'
@@ -94,7 +108,7 @@ jobs:
           tar -czf ${{ matrix.asset_name }}.tar.gz corvia
           rm corvia
 
-      - name: Create GitHub release (Linux)
+      - name: Upload release assets (Linux)
         if: runner.os == 'Linux'
         uses: softprops/action-gh-release@v2
         with:
@@ -102,9 +116,9 @@ jobs:
           files: |
             ${{ matrix.asset_name }}
             libonnxruntime_providers_*-linux-amd64.so
-          generate_release_notes: true
+          generate_release_notes: false
 
-      - name: Create GitHub release (macOS)
+      - name: Upload release assets (macOS)
         if: runner.os == 'macOS'
         uses: softprops/action-gh-release@v2
         with:
